@@ -3,12 +3,16 @@ dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 const express = require('express')
 const dotenv = require('dotenv')
+const cors = require("cors");
 const { MongoClient, ServerApiVersion } = require('mongodb');
 dotenv.config()
 
 const app = express()
 const port = process.env.PORT;
 const uri = process.env.MONGO_URI;
+
+app.use(cors())
+app.use(express.json())
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -24,6 +28,17 @@ async function run() {
         // Connect the client to the server	(optional starting in v4.7)
         await client.connect();
 
+        const db = client.db("nestudy")
+        const roomCollection = db.collection("rooms")
+
+        app.post('/room', async (req, res) =>{
+            const roomData = req.body;
+            console.log(roomData);            
+            const result = await roomCollection.insertOne(roomData)
+
+            res.json(result)
+        })
+         
 
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
