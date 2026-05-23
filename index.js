@@ -31,6 +31,11 @@ async function run() {
         const db = client.db("nestudy")
         const roomCollection = db.collection("rooms")
 
+        app.get('/room', async(req, res) => {
+            const result = await roomCollection.find().toArray()
+            res.json(result)
+        })
+
         app.post('/room', async (req, res) =>{
             const roomData = req.body;
             console.log(roomData);            
