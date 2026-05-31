@@ -50,13 +50,13 @@ async function run() {
             const result = await roomCollection.insertOne(roomData)
 
             res.json(result)
-        })
+        });
 
         app.get('/room/:id', async (req, res) => {
             const { id } = req.params
             const result = await roomCollection.findOne({ _id: new ObjectId(id) })
             res.json(result)
-        })
+        });
 
         app.patch('/room/:id', async (req, res) => {
             const { id } = req.params
@@ -67,7 +67,7 @@ async function run() {
                 { $set: updatedData }
             )
             res.json(result)
-        })
+        });
 
         app.delete('/room/:id', async (req, res) => {
             const { id } = req.params;
@@ -75,20 +75,20 @@ async function run() {
                 _id: new ObjectId(id)
             })
             res.json(result)
-        })
+        });
 
         app.post('/booking', async (req, res) => {
             const bookingData = req.body;
             const result = await bookingCollection.insertOne(bookingData)
 
             res.json(result)
-        })
+        });
 
         app.get('/booking/:userId', async (req, res) => {
             const { userId } = req.params
             const result = await bookingCollection.find({ userId: userId }).toArray()
             res.json(result)
-        })
+        });
 
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
