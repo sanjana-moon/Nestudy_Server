@@ -5,6 +5,7 @@ const express = require('express')
 const dotenv = require('dotenv')
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+const { userInfo } = require("node:os");
 dotenv.config()
 
 const app = express()
@@ -32,48 +33,60 @@ async function run() {
         const roomCollection = db.collection("rooms")
         const bookingCollection = db.collection("bookings")
 
-        app.get('/room', async(req, res) => {
+        app.get('/room', async (req, res) => {
             const result = await roomCollection.find().toArray()
             res.json(result)
         })
 
-        app.post('/room', async (req, res) =>{
+        app.get('/featured-rooms', async (req, res) => {
+            const result = await roomCollection.find().sort({ _id: -1 }).limit(6).toArray();
+
+            res.json(result);
+        });
+
+        app.post('/room', async (req, res) => {
             const roomData = req.body;
-            console.log(roomData);            
+            console.log(roomData);
             const result = await roomCollection.insertOne(roomData)
 
             res.json(result)
         })
 
-        app.get('/room/:id', async(req, res) => {
-            const {id} = req.params
-            const result = await roomCollection.findOne({_id: new ObjectId(id)})
+        app.get('/room/:id', async (req, res) => {
+            const { id } = req.params
+            const result = await roomCollection.findOne({ _id: new ObjectId(id) })
             res.json(result)
         })
 
-        app.patch('/room/:id', async(req, res) =>{
-            const {id} = req.params
+        app.patch('/room/:id', async (req, res) => {
+            const { id } = req.params
             const updatedData = req.body
 
             const result = await roomCollection.updateOne(
-                {_id: new ObjectId(id)},
-                {$set: updatedData}
+                { _id: new ObjectId(id) },
+                { $set: updatedData }
             )
             res.json(result)
         })
-         
-        app.delete('/room/:id', async(req, res) => {
-            const {id} = req.params;
+
+        app.delete('/room/:id', async (req, res) => {
+            const { id } = req.params;
             const result = await roomCollection.deleteOne({
                 _id: new ObjectId(id)
             })
             res.json(result)
         })
 
-        app.post('/booking', async(req, res) =>{
+        app.post('/booking', async (req, res) => {
             const bookingData = req.body;
             const result = await bookingCollection.insertOne(bookingData)
 
+            res.json(result)
+        })
+
+        app.get('/booking/:userId', async (req, res) => {
+            const { userId } = req.params
+            const result = await bookingCollection.find({ userId: userId }).toArray()
             res.json(result)
         })
 
