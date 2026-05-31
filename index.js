@@ -46,8 +46,11 @@ async function run() {
 
         app.post('/room', async (req, res) => {
             const roomData = req.body;
-            console.log(roomData);
-            const result = await roomCollection.insertOne(roomData)
+
+            const result = await roomCollection.insertOne({
+                ...roomData,
+                bookedBy: []
+            });
 
             res.json(result)
         });
@@ -79,9 +82,37 @@ async function run() {
 
         app.post('/booking', async (req, res) => {
             const bookingData = req.body;
-            const result = await bookingCollection.insertOne(bookingData)
 
-            res.json(result)
+            const existing = await bookingCollection.findOne({
+                roomId: bookingData.roomId,
+                bookingDate: bookingData.bookingDate,
+                status: "confirmed",
+                startHour: { $lt: bookingData.endHour },
+                endHour: { $gt: bookingData.startHour }
+            });
+
+            if (existing) {
+                return res.status(400).json({
+                    message: "This time slot is already booked"
+                });
+            }
+
+            const result = await bookingCollection.insertOne({
+                ...bookingData,
+                status: "confirmed",
+                createdAt: new Date()
+            });
+
+            await roomCollection.updateOne(
+                { _id: new ObjectId(bookingData.roomId) },
+                {
+                    $addToSet: {
+                        bookedBy: bookingData.userId
+                    }
+                }
+            );
+
+            res.json(result);
         });
 
         app.get('/booking/:userId', async (req, res) => {
@@ -90,6 +121,41 @@ async function run() {
             res.json(result)
         });
 
+        app.patch('/booking/:id/cancel', async (req, res) => {
+            const { id } = req.params;
+            const { userId } = req.body;
+
+            const booking = await bookingCollection.findOne({
+                _id: new ObjectId(id)
+            });
+
+            if (!booking) {
+                return res.status(404).json({ error: "Booking not found" });
+            }
+
+            if (booking.userId !== userId) {
+                return res.status(403).json({ error: "Unauthorized" });
+            }
+
+            if (booking.status === "cancelled") {
+                return res.status(400).json({ error: "Already cancelled" });
+            }
+
+            await Promise.all([
+                bookingCollection.updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { status: "cancelled" } }
+                ),
+                roomCollection.updateOne(
+                    { _id: new ObjectId(booking.roomId) },
+                    { $pull: { bookedBy: booking.userId } }
+                )
+            ]);
+
+            res.json({ message: "Booking cancelled successfully" });
+        });
+
+        
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
