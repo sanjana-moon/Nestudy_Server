@@ -59,9 +59,47 @@ async function run() {
         const bookingCollection = db.collection("bookings")
 
         app.get('/room', async (req, res) => {
-            const result = await roomCollection.find().toArray()
-            res.json(result)
-        })
+            const { search, amenities, minPrice, maxPrice, floor } = req.query;
+
+            const query = {};
+
+            // SEARCH
+            if (search) {
+                query.roomName = {
+                    $regex: search,
+                    $options: "i"
+                };
+            }
+
+            // AMENITIES (FIXED)
+            if (amenities) {
+                const amenityArray = amenities
+                    .split(",")
+                    .map(a => a.trim().toLowerCase());
+
+                query.amenities = {
+                    $all: amenityArray   // 👈 IMPORTANT FIX
+                };
+            }
+
+            // PRICE
+            if (minPrice || maxPrice) {
+                query.hourlyRate = {};
+                if (minPrice) query.hourlyRate.$gte = Number(minPrice);
+                if (maxPrice) query.hourlyRate.$lte = Number(maxPrice);
+            }
+
+            // FLOOR
+            if (floor) {
+                query.floor = {
+                    $regex: floor,
+                    $options: "i"
+                };
+            }
+
+            const result = await roomCollection.find(query).toArray();
+            res.json(result);
+        });
 
         app.get('/featured-rooms', async (req, res) => {
             const result = await roomCollection.find().sort({ _id: -1 }).limit(6).toArray();
@@ -69,15 +107,26 @@ async function run() {
             res.json(result);
         });
 
-        app.post('/room', async (req, res) => {
+        app.post('/room', verifyToken, async (req, res) => {
             const roomData = req.body;
 
             const result = await roomCollection.insertOne({
                 ...roomData,
-                bookedBy: []
+                bookedBy: [],
+                bookingCount: 0
             });
 
             res.json(result)
+        });
+
+        app.get('/my-listings/:email', verifyToken, async (req, res) => {
+            const { email } = req.params;
+
+            const result = await roomCollection.find({
+                ownerEmail: email
+            }).toArray();
+
+            res.json(result);
         });
 
         app.get('/room/:id', verifyToken, async (req, res) => {
@@ -89,7 +138,7 @@ async function run() {
             res.json(result)
         });
 
-        app.patch('/room/:id', async (req, res) => {
+        app.patch('/room/:id', verifyToken, async (req, res) => {
             const { id } = req.params
             const updatedData = req.body
 
@@ -100,15 +149,20 @@ async function run() {
             res.json(result)
         });
 
-        app.delete('/room/:id', async (req, res) => {
+        app.delete('/room/:id', verifyToken, async (req, res) => {
             const { id } = req.params;
+
+            await bookingCollection.deleteMany({
+                roomId: id
+            });
+
             const result = await roomCollection.deleteOne({
                 _id: new ObjectId(id)
             })
             res.json(result)
         });
 
-        app.post('/booking', async (req, res) => {
+        app.post('/booking', verifyToken, async (req, res) => {
             const bookingData = req.body;
 
             const existing = await bookingCollection.findOne({
@@ -136,6 +190,9 @@ async function run() {
                 {
                     $addToSet: {
                         bookedBy: bookingData.userId
+                    },
+                    $inc: {
+                        bookingCount: 1
                     }
                 }
             );
@@ -143,13 +200,13 @@ async function run() {
             res.json(result);
         });
 
-        app.get('/booking/:userId', async (req, res) => {
+        app.get('/booking/:userId', verifyToken, async (req, res) => {
             const { userId } = req.params
             const result = await bookingCollection.find({ userId: userId }).toArray()
             res.json(result)
         });
 
-        app.patch('/booking/:id/cancel', async (req, res) => {
+        app.patch('/booking/:id/cancel', verifyToken, async (req, res) => {
             const { id } = req.params;
             const { userId } = req.body;
 
@@ -176,7 +233,10 @@ async function run() {
                 ),
                 roomCollection.updateOne(
                     { _id: new ObjectId(booking.roomId) },
-                    { $pull: { bookedBy: booking.userId } }
+                    {
+                        $pull: { bookedBy: booking.userId },
+                        $inc: { bookingCount: -1 }
+                    }
                 )
             ]);
 
