@@ -27,7 +27,7 @@ const client = new MongoClient(uri, {
 });
 
 const JWKS = createRemoteJWKSet(
-    new URL("http://localhost:3000/api/auth/jwks")
+    new URL(`${process.env.CLIENT_URL}/api/auth/jwks`)
 )
 
 const verifyToken = async (req, res, next) => {
@@ -42,7 +42,6 @@ const verifyToken = async (req, res, next) => {
 
     try {
         const { payload } = await jwtVerify(token, JWKS,)
-        console.log(payload);
         next()
     } catch (error) {
         return res.status(403).json({ message: "Forbidden" })
@@ -52,7 +51,7 @@ const verifyToken = async (req, res, next) => {
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
-        await client.connect();
+        // await client.connect();
 
         const db = client.db("nestudy")
         const roomCollection = db.collection("rooms")
@@ -63,7 +62,6 @@ async function run() {
 
             const query = {};
 
-            // SEARCH
             if (search) {
                 query.roomName = {
                     $regex: search,
@@ -71,25 +69,22 @@ async function run() {
                 };
             }
 
-            // AMENITIES (FIXED)
             if (amenities) {
                 const amenityArray = amenities
                     .split(",")
                     .map(a => a.trim().toLowerCase());
 
                 query.amenities = {
-                    $all: amenityArray   // 👈 IMPORTANT FIX
+                    $all: amenityArray
                 };
             }
 
-            // PRICE
             if (minPrice || maxPrice) {
                 query.hourlyRate = {};
                 if (minPrice) query.hourlyRate.$gte = Number(minPrice);
                 if (maxPrice) query.hourlyRate.$lte = Number(maxPrice);
             }
 
-            // FLOOR
             if (floor) {
                 query.floor = {
                     $regex: floor,
@@ -102,21 +97,31 @@ async function run() {
         });
 
         app.get('/featured-rooms', async (req, res) => {
-            const result = await roomCollection.find().sort({ _id: -1 }).limit(6).toArray();
+            const result = await roomCollection
+                .find()
+                .sort({ createdAt: -1 })
+                .limit(6)
+                .toArray();
 
             res.json(result);
         });
 
         app.post('/room', verifyToken, async (req, res) => {
-            const roomData = req.body;
+            try {
+                const roomData = req.body;
 
-            const result = await roomCollection.insertOne({
-                ...roomData,
-                bookedBy: [],
-                bookingCount: 0
-            });
+                const result = await roomCollection.insertOne({
+                    ...roomData,
+                    bookedBy: [],
+                    bookingCount: 0,
+                    createdAt: new Date()
+                });
 
-            res.json(result)
+                res.json(result);
+            } catch (error) {
+                console.error(error);
+                res.status(500).json(error);
+            }
         });
 
         app.get('/my-listings/:email', verifyToken, async (req, res) => {
@@ -169,8 +174,8 @@ async function run() {
                 roomId: bookingData.roomId,
                 bookingDate: bookingData.bookingDate,
                 status: "confirmed",
-                startHour: { $lt: bookingData.endHour },
-                endHour: { $gt: bookingData.startHour }
+                startHour: { $lte: bookingData.endHour },
+                endHour: { $gte: bookingData.startHour }
             });
 
             if (existing) {
@@ -244,7 +249,7 @@ async function run() {
         });
 
 
-        await client.db("admin").command({ ping: 1 });
+        // await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
     } finally {
         // Ensures that the client will close when you finish/error
